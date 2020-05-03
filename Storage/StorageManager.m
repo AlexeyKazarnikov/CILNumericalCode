@@ -1,16 +1,13 @@
 classdef StorageManager
     %StorageHelper This class provides methods for easy path
-    %management for both local and cloud storage directories
-    %   The general idea of local / cloud storage could be formulated as
+    %   management for local storage directories.
+    %   The general idea of local storage could be formulated as
     %   follows. The data, used by the MATLAB scripts in this library is
-    %   saved in prescribed folder (called local storages) and organized
-    %   with respect to script and run names. Cloud storage is a subfolder
-    %   in Google Drive where lightweight files are copied for easier
-    %   remote access.
+    %   saved in prescribed folder (called local storage) and organized
+    %   with respect to script and run names.
     
     properties
         LocalStoragePath = '';
-        %RootFolderName = '';
         FolderName = '';
         SubFolderName = '';
 		PathSeparator = '';
@@ -46,9 +43,7 @@ classdef StorageManager
             %rootFolderPath = strcat(storagePath, obj.PathSeparator, obj.RootFolderName);
             folderPath = strcat(storagePath, obj.PathSeparator, obj.FolderName);
             subFolderPath = strcat(folderPath, obj.PathSeparator, obj.SubFolderName);
-            %if ~exist(rootFolderPath,'dir')
-            %    mkdir(storagePath, obj.RootFolderName);
-            %end
+
             if ~exist(folderPath,'dir')
                 mkdir(storagePath, obj.FolderName);
             end  

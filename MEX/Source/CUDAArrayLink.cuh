@@ -1,9 +1,11 @@
 #pragma once
+
 #include <exception>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
