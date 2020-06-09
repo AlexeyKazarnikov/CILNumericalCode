@@ -87,14 +87,16 @@ template <typename value_type> RunResult RunModelSolver(
 )
 {
 
-	size_t ElementsPerDevice = static_cast<unsigned int>(size / devices.size());
+	size_t ElementsPerSystem = static_cast<unsigned int>(size / launchdata.BlockNumber);
 	size_t BlocksPerDevice = static_cast<unsigned int>(launchdata.BlockNumber / devices.size());
+	size_t ElementsPerDevice = BlocksPerDevice * ElementsPerSystem;
 
 	std::vector<size_t> DeviceElementNumber(devices.size(), ElementsPerDevice);
 	std::vector<size_t> DeviceBlockNumber(devices.size(), BlocksPerDevice);
 
-	DeviceElementNumber[0] += (size - ElementsPerDevice * devices.size());
 	DeviceBlockNumber[0] += (launchdata.BlockNumber - BlocksPerDevice * devices.size());
+	DeviceElementNumber[0] += (launchdata.BlockNumber - BlocksPerDevice * devices.size()) * ElementsPerSystem;
+	
 	
 	// CUDA streams
 	std::vector<cudaStream_t> CudaStreams(devices.size());
@@ -127,6 +129,8 @@ template <typename value_type> RunResult RunModelSolver(
 
 	if (showTiming)
 		ReportDuration(start, "Memory allocation on all devices is finished.");
+		
+	size_t DeviceOffset = 0;
 
 	// asynchronous part
 	for (unsigned int i = 0; i < devices.size(); ++i)
@@ -136,10 +140,10 @@ template <typename value_type> RunResult RunModelSolver(
 		CUDA_CALL(DeviceInitialData[i]->AsyncCopyFromHost(
 			HostInitialData,
 			0, // device start index
-			DeviceElementNumber[i] * i, // host start index
+			DeviceOffset, // host start index
 			DeviceElementNumber[i], // number of elements
 			CudaStreams[i]),
-			"CUDA copy from host to device failed!");
+			"CUDA copy from host to device failed!");		
 
 		if (showTiming)
 			ReportDuration(start, "AsyncCopyFromHost executed.");
@@ -169,13 +173,16 @@ template <typename value_type> RunResult RunModelSolver(
 		CUDA_CALL(DeviceInitialData[i]->AsyncCopyToHost(
 			HostOutputData,
 			0, // device start index
-			DeviceElementNumber[i] * i, // host start index
+			DeviceOffset, // host start index
 			DeviceElementNumber[i], // number of elements
 			CudaStreams[i]),
 			"CUDA copy from device to host failed!");
 
 		if (showTiming)
 			ReportDuration(start, "AsyncCopyToHost executed.");
+			
+		// only at the end of asynchronous part (after the second copy has been arranged) we increase the device offset
+		DeviceOffset += DeviceElementNumber[i];
 			
 	}
 
