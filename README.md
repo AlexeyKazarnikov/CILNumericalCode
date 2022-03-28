@@ -1,5 +1,8 @@
 # CILNumericalCode
- This repository contains numerical code for the paper "Statistical approach for parameter identification by Turing patterns", to be published in the Journal of Theoretical Biology. The code is implemented in MATLAB programming language. For time-consuming parts, however, we provide also faster source codes, written on C++ and CUDA. The scripts for the compilation of MEX files have been tested on MATLAB R2019b
+ This repository contains numerical code for the paper "Statistical approach for parameter identification by Turing patterns", published in the Journal of Theoretical Biology (see the link: https://www.sciencedirect.com/science/article/pii/S0022519320301740). The code is implemented in MATLAB programming language. For time-consuming parts we also provide optimized codes, written on C++ and CUDA. The scripts for the compilation of MEX files have been tested on MATLAB R2019b.
+ 
+ ## UPDATE
+  An updated version of the code, suitable for working with the multi-feature and synthetic-based CIL approaches, is located in the respective sub-folder of the repository. Additionally, new model examples, such as mechano-chemical and reaction-diffusion-ODE systems have been added. The new code can be used independently from the main part of the library. Sources for the MEX files are located in the 'MEX' sub-folder. 
  
  ## Contents
  There are three main scripts in the repository:
@@ -15,3 +18,5 @@
  
  ## Versions
  All MATLAB code, included into the current repository, has been written and tested on MATLAB R2019b. For compiling MEX files we have used Visual C++ 2017 compiler and Nvidia CUDA Toolkit 10.1
+ 
+ 
