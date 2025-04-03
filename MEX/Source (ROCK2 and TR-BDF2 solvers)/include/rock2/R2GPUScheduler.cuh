@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-#include "rock2/R2Scheduler.cuh"
+#include "rock2/R2Scheduler.h"
 #include "utils/MemoryLink.h"
 #include "utils/CUDAArrayLinks_v4.cuh"
 
@@ -34,6 +34,7 @@ private:
 	DeviceArrayLink<value_type> m_device_sys_state_data;
 	DeviceArrayLink<index_type> m_device_run_indices;
 	DeviceArrayLink<value_type> m_device_communication_data; // used for transfering time steps ONLY!
+	DeviceArrayLink<value_type> m_device_rhs_state_data; // used to store the r.h.s., evaluated during the initial stage procedure
 
 	DeviceArrayLink<value_type> m_device_scalar_data;
 
@@ -59,6 +60,7 @@ public:
 	value_type* get_device_rhs_norm_data_ptr();
 	index_type* get_device_run_indices_ptr();
 	value_type* get_device_sys_state_ptr();
+	value_type* get_device_rhs_state_ptr();
 	size_t get_queue_start(R2OperationType t_operation);
 	size_t get_queue_length(R2OperationType t_operation);
 	
@@ -95,6 +97,7 @@ m_host_scalar_data(3 * t_sim_number),
 m_device_sys_state_data(4 * t_input_data.size(), t_device_number), // y, yprev, yjm1, yjm2
 m_device_run_indices(this->m_host_run_indices.size(), t_device_number),
 m_device_communication_data(this->m_host_communication_data.size(), t_device_number),
+m_device_rhs_state_data(t_input_data.size(), t_device_number),
 m_device_scalar_data(this->m_host_scalar_data.size(), t_device_number),
 m_device_time_step_data(t_sim_number, t_device_number)
 {
@@ -215,6 +218,12 @@ template<typename value_type, typename index_type>
 value_type* R2GPUScheduler<value_type, index_type>::get_device_sys_state_ptr()
 {
 	return this->m_device_sys_state_data.data();
+}
+
+template<typename value_type, typename index_type>
+value_type* R2GPUScheduler<value_type, index_type>::get_device_rhs_state_ptr()
+{
+	return this->m_device_rhs_state_data.data();
 }
 
 template<typename value_type, typename index_type>

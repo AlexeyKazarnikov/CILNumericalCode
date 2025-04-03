@@ -8,7 +8,8 @@ close all
 
 % first add path to the library and to the mcmcstat toolbox
 addpath ../Startup
-addpath D:\Programming\GitHub\NewLibrary\mcmcstat
+% addpath Please add here the path to the local version of mcmcstat toolbox
+% (available from https://mjlaine.github.io/mcmcstat/)
 
 % this line initializes all library paths, allowing to use all functions
 % and classes

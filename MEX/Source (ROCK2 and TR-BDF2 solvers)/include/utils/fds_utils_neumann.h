@@ -38,27 +38,8 @@ template <typename value_type, typename index_type> value_type __host__ __device
 	return u[next_index(k, Ndim)];
 }
 
-template <typename value_type> value_type __host__ __device__ get_next_element(
-	const value_type* u,
-	const unsigned int k,
-	const unsigned int Ndim
-)
-{
-	return u[next_index(k, Ndim)];
-}
-
 template <typename value_type, typename index_type> value_type __host__ __device__ get_after_next_element(
 	const shift_handler<value_type, index_type>& u,
-	const unsigned int k,
-	const unsigned int Ndim
-)
-{
-	auto u_pp = u[next_index(k, Ndim, 2)];
-	return (k <= Ndim - 2) * u_pp + (k == Ndim - 1) * (2 * u_pp - 2 * u[Ndim - 2] + u[Ndim - 3]);
-}
-
-template <typename value_type> value_type __host__ __device__ get_after_next_element(
-	const value_type* u,
 	const unsigned int k,
 	const unsigned int Ndim
 )
@@ -76,15 +57,6 @@ template <typename value_type, typename index_type> value_type __host__ __device
 	return u[prev_index(k, Ndim)];
 }
 
-template <typename value_type> value_type __host__ __device__ get_prev_element(
-	const value_type* u,
-	const unsigned int k,
-	const unsigned int Ndim
-)
-{
-	return u[prev_index(k, Ndim)];
-}
-
 template <typename value_type, typename index_type> value_type __host__ __device__ get_after_prev_element(
 	const shift_handler<value_type, index_type>& u,
 	const unsigned int k,
@@ -93,6 +65,36 @@ template <typename value_type, typename index_type> value_type __host__ __device
 {
 	auto u_mm = u[prev_index(k, Ndim, 2)];
 	return (k >= 1) * u_mm + (k == 0) * (u[2] - 2 * u[1] + 2 * u_mm);
+}
+
+
+
+template <typename value_type> value_type __host__ __device__ get_next_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[next_index(k, Ndim)];
+}
+
+template <typename value_type> value_type __host__ __device__ get_after_next_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	auto u_pp = u[next_index(k, Ndim, 2)];
+	return (k <= Ndim - 2) * u_pp + (k == Ndim - 1) * (2 * u_pp - 2 * u[Ndim - 2] + u[Ndim - 3]);
+}
+
+template <typename value_type> value_type __host__ __device__ get_prev_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[prev_index(k, Ndim)];
 }
 
 template <typename value_type> value_type __host__ __device__ get_after_prev_element(

@@ -3,9 +3,14 @@ classdef HMTMultiDistanceProvider < DistanceProvider
     %   Detailed explanation goes here
     
     methods
-        function obj = HMTMultiDistanceProvider()
+        function obj = HMTMultiDistanceProvider(P)
             obj.Abbreviation = 'HMT';
             obj.Settings.UseMinMaxSettings = false;
+            if nargin < 1
+                obj.Settings.P = 2;
+            else
+                obj.Settings.P = P;
+            end
         end
         
         function data = serialize(obj)
@@ -29,11 +34,11 @@ classdef HMTMultiDistanceProvider < DistanceProvider
             
             distance_providers = {};
             if ~obj.Settings.UseMinMaxSettings
-                distance_providers{1} = LpDistance(2);
+                distance_providers{1} = LpDistance(obj.Settings.P);
                 distance_providers{2} = LpDistance(0);
-                distance_providers{3} = W1pDistance(2);
+                distance_providers{3} = W1pDistance(obj.Settings.P);
                 distance_providers{4} = W1pDistance(0);
-                distance_providers{5} = W1pPrimeDistance(2);
+                distance_providers{5} = W1pPrimeDistance(obj.Settings.P);
                 distance_providers{6} = W1pPrimeDistance(0);
             else
                 distance_providers{1} = LpDistance(2);

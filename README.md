@@ -2,7 +2,12 @@
  This repository contains numerical code for the paper "Statistical approach for parameter identification by Turing patterns", published in the Journal of Theoretical Biology (see the link: https://www.sciencedirect.com/science/article/pii/S0022519320301740). The code is implemented in MATLAB programming language. For time-consuming parts we also provide optimized codes, written on C++ and CUDA. The scripts for the compilation of MEX files have been tested on MATLAB R2019b.
  
  ## UPDATE
-  An updated version of the code, suitable for working with the multi-feature and synthetic-based CIL approaches, is located in the respective sub-folder of the repository. Additionally, new model examples, such as mechano-chemical and reaction-diffusion-ODE systems have been added. The new code can be used independently from the main part of the library. Sources for the MEX files are located in the 'MEX' sub-folder. 
+  An updated version of the code, suitable for working with the multi-feature and synthetic-based CIL approaches, is located in the respective sub-folder of the repository. Additionally, new model examples, such as mechano-chemical and reaction-diffusion-ODE systems have been added. The new code can be used independently from the main part of the library. Sources for the MEX files are located in the 'MEX' sub-folder. This numerical code serves as a supplementary information for the paper "A Bayesian Approach to Modeling Biological Pattern Formation with Limited Data", published in the SIAM Journal on Scientific Computing (see the link: https://epubs.siam.org/doi/10.1137/22M1485553).
+  
+ 
+ ## UPDATE 2
+   An updated version of the code was supplemented with an additional example of parameter identification of the Lengyel-Epstein reaction-diffusion model using the experimental chemical pattern data coming from the chlorite-iodite-malonic acid (CIMA) reaction. Model calibration is done using a novel mixed mode CIL approach. The source code for the respective MEX files has been added to the 'MEX' sub-folder.
+  
  
  ## Contents
  There are three main scripts in the repository:

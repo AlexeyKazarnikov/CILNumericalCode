@@ -8,7 +8,6 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -18,46 +17,39 @@
 #include "utils/MexUtils.h"
 #include "utils/TestUtils.h"
 
-template <typename value_type, typename index_type, typename gpu_handler> void run_rd_solver(
+template <typename value_type, typename index_type, unsigned int component_number, typename gpu_handler> void run_rd_system_solver(
 	int nlhs, 
 	mxArray* plhs[],
 	int nrhs, 
 	const mxArray* prhs[],
 	const std::vector<value_type>& par_array,
 	index_type sys_dim,
-	value_type nu1,
-	value_type nu2
+	const std::vector<value_type>& diff_coeff_vector
 )
 {
 	std::vector<std::string> sol_par_fields = {
 		"initial_time_step", 
-		"min_time_point",
 		"final_time_point",
 		"conv_norm",
+		"conv_stage_number",
 		"abs_tol", 
 		"rel_tol",
-		"grid_resolution",
-		"max_step_number",
-		"norm_average_window"
+		"grid_resolution"
 	};
 	std::vector<double> sol_par_values(sol_par_fields.size());
 	checkmxStruct(prhs[1], sol_par_fields, sol_par_values, "Input parameter sol_par must be a struct with correct fields!");
 	
 	value_type initial_time_step = sol_par_values[0];
-	value_type min_time_point = sol_par_values[1];
-	value_type final_time_point = sol_par_values[2];
-	value_type conv_norm = sol_par_values[3];
+	value_type final_time_point = sol_par_values[1];
+	value_type conv_norm = sol_par_values[2];
+	index_type conv_stage_number = sol_par_values[3];
 	value_type abs_tol = sol_par_values[4];
 	value_type rel_tol = sol_par_values[5];
 	value_type grid_resolution_value = sol_par_values[6];
-	value_type max_step_number_value = sol_par_values[7];
-	value_type norm_average_window_value = sol_par_values[8];
 	
 	index_type grid_resolution = static_cast<index_type>(grid_resolution_value);
-	index_type max_step_number = static_cast<index_type>(max_step_number_value);
-	index_type norm_average_window = static_cast<index_type>(norm_average_window_value);
 	
-	index_type sys_size = 2;
+	index_type sys_size = component_number;
 	for (auto k = 0; k < sys_dim; ++k)
 		sys_size *= grid_resolution;
 
@@ -81,31 +73,14 @@ template <typename value_type, typename index_type, typename gpu_handler> void r
 	if (devices.size() > sim_number)
 		devices.resize(sim_number);
 
-	if (nlhs < 1 || nlhs > 3)
-		mexErrMsgTxt("Wrong number of output arguments (must be between 1 and 3!)");
+	if (nlhs != 1)
+		mexErrMsgTxt("Wrong number of output arguments (must be 1!)");
 
 	double* result;
 	mwSize dims[2] = {sys_size, sim_number };
 
 	plhs[0] = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
 	result = mxGetDoubles(plhs[0]);
-
-	double* end_time_points = nullptr;
-	double* end_rhs_norms = nullptr;
-
-	if (nlhs > 1)
-	{
-		mwSize dims[2] = { sim_number, 1 };
-		plhs[1] = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-		end_time_points = mxGetDoubles(plhs[1]);
-	} // if
-
-	if (nlhs > 2)
-	{
-		mwSize dims[2] = { sim_number, 1 };
-		plhs[2] = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-		end_rhs_norms = mxGetDoubles(plhs[2]);
-	} // if
 
 	// executing solver in multiple threads
 	std::vector<cudaError_t> cuda_results(devices.size());
@@ -115,10 +90,8 @@ template <typename value_type, typename index_type, typename gpu_handler> void r
 	for (unsigned int k = 0; k < devices.size(); ++k)
 	{
 		threads[k] = std::make_shared<std::thread>(
-			[k, sim_number, nu1, nu2, par_array, 
-			initial_time_step, min_time_point, final_time_point, conv_norm, abs_tol, rel_tol, grid_resolution, max_step_number, norm_average_window,
-			IC, result, sys_size,
-			&cuda_results, &warning_results, &devices, end_time_points, end_rhs_norms]()
+			[k, sim_number, grid_resolution, &diff_coeff_vector, par_array, initial_time_step, final_time_point, conv_norm, conv_stage_number, abs_tol, rel_tol, IC, result, sys_size,
+			&cuda_results, &warning_results, &devices]()
 			{
 				auto curr_device_number = devices[k];
 
@@ -136,15 +109,12 @@ template <typename value_type, typename index_type, typename gpu_handler> void r
 					runners[j] = std::make_shared<R2Runner<value_type, index_type>>(
 						j,
 						initial_time_step,
-						min_time_point,
 						final_time_point,
 						conv_norm,
-						max_step_number,
-						norm_average_window
-					);
+						conv_stage_number);
 
 				R2GPUScheduler<value_type, index_type> scheduler(curr_sim_number, curr_input_data, curr_output_data, curr_device_number);
-				gpu_handler handler(curr_sim_number, sim_size, grid_resolution, nu1, nu2, par_array, curr_device_number, abs_tol, rel_tol);
+				gpu_handler handler(curr_sim_number, sim_size, grid_resolution, diff_coeff_vector, par_array, curr_device_number, abs_tol, rel_tol);
 
 				while (std::any_of(runners.begin(), runners.end(), [](std::shared_ptr<R2Runner<value_type, index_type>>& val) {return val->is_active(); }))
 				{
@@ -167,15 +137,6 @@ template <typename value_type, typename index_type, typename gpu_handler> void r
 				
 				if (std::any_of(runners.begin(), runners.end(), [](std::shared_ptr<R2Runner<value_type, index_type>>& val) {return !val->is_convergence_reached();}))
 					warning_results[k] = true;
-
-				if (end_time_points)
-					for (unsigned int j = 0; j < runners.size(); ++j)
-						end_time_points[start_sim_index + j] = runners[j]->get_time();
-
-				if (end_rhs_norms)
-					for (unsigned int j = 0; j < runners.size(); ++j)
-						end_rhs_norms[start_sim_index + j] = runners[j]->get_averaged_rhs_norm();
-
 			});		
 	}
 

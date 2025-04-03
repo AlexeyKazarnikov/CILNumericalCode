@@ -9,6 +9,8 @@
 #define __device__
 #endif
 
+#include "mc_models/shift_handler.cuh"
+
 inline unsigned int __host__ __device__ prev_index(
 	const unsigned int k,
 	const unsigned int Ndim,
@@ -27,8 +29,8 @@ inline unsigned int __host__ __device__ next_index(
 	return (k + span < Ndim) * (k + span) + (k + span >= Ndim) * (k + span - Ndim);
 }
 
-template <typename handler_type> auto __host__ __device__ get_next_element(
-	const handler_type& u,
+template <typename value_type, typename index_type> value_type __host__ __device__ get_next_element(
+	const shift_handler<value_type, index_type>& u,
 	const unsigned int k,
 	const unsigned int Ndim
 )
@@ -36,8 +38,8 @@ template <typename handler_type> auto __host__ __device__ get_next_element(
 	return u[next_index(k, Ndim)];
 }
 
-template <typename handler_type> auto __host__ __device__ get_after_next_element(
-	const handler_type& u,
+template <typename value_type, typename index_type> value_type __host__ __device__ get_after_next_element(
+	const shift_handler<value_type, index_type>& u,
 	const unsigned int k,
 	const unsigned int Ndim
 )
@@ -45,8 +47,8 @@ template <typename handler_type> auto __host__ __device__ get_after_next_element
 	return u[next_index(k, Ndim, 2)];
 }
 
-template <typename handler_type> auto __host__ __device__ get_prev_element(
-	const handler_type& u,
+template <typename value_type, typename index_type> value_type __host__ __device__ get_prev_element(
+	const shift_handler<value_type, index_type>& u,
 	const unsigned int k,
 	const unsigned int Ndim
 )
@@ -54,8 +56,46 @@ template <typename handler_type> auto __host__ __device__ get_prev_element(
 	return u[prev_index(k, Ndim)];
 }
 
-template <typename handler_type> auto __host__ __device__ get_after_prev_element(
-	const handler_type& u,
+template <typename value_type, typename index_type> value_type __host__ __device__ get_after_prev_element(
+	const shift_handler<value_type, index_type>& u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[prev_index(k, Ndim, 2)];
+}
+
+
+
+template <typename value_type> value_type __host__ __device__ get_next_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[next_index(k, Ndim)];
+}
+
+template <typename value_type> value_type __host__ __device__ get_after_next_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[next_index(k, Ndim, 2)];
+}
+
+template <typename value_type> value_type __host__ __device__ get_prev_element(
+	const value_type* u,
+	const unsigned int k,
+	const unsigned int Ndim
+)
+{
+	return u[prev_index(k, Ndim)];
+}
+
+template <typename value_type> value_type __host__ __device__ get_after_prev_element(
+	const value_type* u,
 	const unsigned int k,
 	const unsigned int Ndim
 )

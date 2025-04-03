@@ -7,7 +7,7 @@
 
 #include "rock2/R2DataArrays.cuh"
 
-template <typename value_type, typename index_type>
+template <typename value_type, typename index_type, typename scheduler_type>
 class R2Handler
 {
 protected:
@@ -39,8 +39,5 @@ public:
 		init_r2_data_arrays(m_fp1, m_fp2, m_recf);
 	}
 
-	virtual void handle_computations()
-	{
-		throw std::logic_error("Cannot handle computations without defining exact implementation of the method!");
-	}
+	virtual void handle_computations(scheduler_type& scheduler) = 0;
 };

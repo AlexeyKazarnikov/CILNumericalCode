@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "rock2/R2OperationQueueManager.cuh"
+#include "rock2/R2OperationQueueManager.h"
 
 #include <string>
 
@@ -103,7 +103,6 @@ index_type R2Scheduler<value_type, index_type>::schedule_r2_finishing_stage(inde
 {
 	auto queue_number = m_operation_queue.get_operation_queue_length(R2OperationType::FinishingProcedure);
 	m_operation_queue.insert(R2OperationType::FinishingProcedure, t_runner_number, mz);
-
 	return queue_number;
 }
 
@@ -118,6 +117,8 @@ index_type R2Scheduler<value_type, index_type>::schedule_spectral_radius_est_sta
 template<typename value_type, typename index_type>
 index_type R2Scheduler<value_type, index_type>::schedule_rhs_norm_stage(index_type t_runner_number)
 {
-	return 0;
+	auto queue_number = m_operation_queue.get_operation_queue_length(R2OperationType::RhsNormEstimation);
+	m_operation_queue.insert(R2OperationType::RhsNormEstimation, t_runner_number);
+	return queue_number;
 }
 

@@ -3,9 +3,10 @@
 // The idea is that no computations are performed here, only the operations are requested and the results are retrieved.
 
 #include <iostream>
-#include<vector>
+#include <deque>
+#include <vector>
 
-#include "R2Scheduler.cuh"
+#include "R2Scheduler.h"
 
 template <typename value_type, typename index_type>
 struct R2RunnerStatistics
@@ -34,9 +35,9 @@ private:
 	index_type m_rhs_norm_queue_number = 0;
 
 	value_type m_time_step;
+	value_type m_min_time_point;
 	value_type m_final_time_point;
 	value_type m_conv_norm;
-	index_type m_conv_stage_number;
 	value_type m_u_round;
 
 	index_type m_degree = 0;
@@ -58,6 +59,9 @@ private:
 
 	R2RunnerStatistics<value_type, index_type> m_runner_statistics;
 
+	std::deque<value_type> m_rhs_norm_values;
+	index_type m_rhs_norm_average_window = 250;
+
 	std::vector<index_type> m_ms = {
 	1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 	17, 18, 19, 20, 22, 24, 26, 28, 30, 33, 36, 39, 43,
@@ -68,24 +72,30 @@ public:
 	R2Runner(
 		index_type t_runner_number,
 		value_type t_time_step = 1e-5,
+		value_type t_min_time_point = 0,
 		value_type t_final_time_point = 100,
-		value_type t_conv_norm = 1e-4,
-		index_type t_conv_stage_number = 150,
-		index_type t_max_step_number = 500,
+		value_type t_conv_norm = 1e-7,
+		index_type t_max_step_number = 100000,
+		index_type t_rhs_norm_average_window = 1000,
 		value_type t_u_round = 1e-16
 		)
 		: 
 		m_runner_number(t_runner_number), 
 		m_time_step(t_time_step), 
+		m_min_time_point(t_min_time_point),
 		m_final_time_point(t_final_time_point),
 		m_conv_norm(t_conv_norm),
-		m_conv_stage_number(t_conv_stage_number),
 		m_max_step_number(t_max_step_number),
+		m_rhs_norm_average_window(t_rhs_norm_average_window),
 		m_u_round(t_u_round)
 	{}
 	void run(R2Scheduler<value_type, index_type>& scheduler);
 	bool is_active();
 	bool is_convergence_reached();
+
+	value_type get_time();
+	value_type get_rhs_norm();
+	value_type get_averaged_rhs_norm();
 };
 
 template<typename value_type, typename index_type>
@@ -107,6 +117,17 @@ void R2Runner<value_type, index_type>::run(R2Scheduler<value_type, index_type>& 
 			exit_flag = true;
 			break;
 		case 1: { //
+			if (m_time > m_min_time_point && !m_is_rejected && !m_rhs_norm_values.empty())
+			{
+				auto average_rhs_norm = std::accumulate(m_rhs_norm_values.begin(), m_rhs_norm_values.end(), value_type(0)) / m_rhs_norm_values.size();
+				if (average_rhs_norm < m_conv_norm)
+				{
+					m_stage = 0;
+					exit_flag = true;
+					break;
+				}
+			}
+
 			if (!m_is_rejected)
 			{
 				scheduler.schedule_prev_state_overwrite_stage(m_runner_number, m_degree_prev);
@@ -125,6 +146,7 @@ void R2Runner<value_type, index_type>::run(R2Scheduler<value_type, index_type>& 
 				m_return_code = 1;
 				m_stage = 0;
 				exit_flag = true;
+				break;
 			}
 
 			if (m_spectral_radius_stage == 0)
@@ -214,6 +236,7 @@ void R2Runner<value_type, index_type>::run(R2Scheduler<value_type, index_type>& 
 		case 5: {
 
 			m_local_error_queue_number = scheduler.schedule_r2_finishing_stage(m_runner_number, m_pos_fp);
+			m_rhs_norm_queue_number = scheduler.schedule_rhs_norm_stage(m_runner_number);
 			m_stage = 6;
 			exit_flag = true;
 			break;
@@ -221,11 +244,8 @@ void R2Runner<value_type, index_type>::run(R2Scheduler<value_type, index_type>& 
 		case 6: {
 			m_local_error = scheduler.get_local_error(m_local_error_queue_number);
 
-			//if (m_runner_number == 0)
-			//	std::cout << m_local_error << std::endl;
-
 			m_degree_prev = m_degree;
-			m_runner_statistics.step_number+=1;
+			m_runner_statistics.step_number += 1;
 			m_runner_statistics.rhs_evaluation_number += m_degree + 2;
 
 			if (m_runner_statistics.step_number == m_max_step_number) // maximal number of steps exceeded, saving data and exiting
@@ -254,6 +274,11 @@ void R2Runner<value_type, index_type>::run(R2Scheduler<value_type, index_type>& 
 				m_runner_statistics.accepted_step_number += 1;
 				m_max_time_step_increase_factor = 2;
 				m_time += m_time_step;
+
+				auto rhs_norm = scheduler.get_rhs_norm(m_rhs_norm_queue_number);
+				m_rhs_norm_values.push_front(rhs_norm);
+				if (m_rhs_norm_values.size() > m_rhs_norm_average_window)
+					m_rhs_norm_values.pop_back();
 
 				if (m_is_rejected) // previous step was rejected
 				{
@@ -319,4 +344,23 @@ template<typename value_type, typename index_type>
 bool R2Runner<value_type, index_type>::is_convergence_reached()
 {
 	return m_runner_statistics.step_number < m_max_step_number;
+}
+
+template<typename value_type, typename index_type>
+inline value_type R2Runner<value_type, index_type>::get_time()
+{
+	return this->m_time;
+}
+
+template<typename value_type, typename index_type>
+inline value_type R2Runner<value_type, index_type>::get_rhs_norm()
+{
+	return this->m_rhs_norm;
+}
+
+template<typename value_type, typename index_type>
+inline value_type R2Runner<value_type, index_type>::get_averaged_rhs_norm()
+{
+	auto average_rhs_norm = std::accumulate(m_rhs_norm_values.begin(), m_rhs_norm_values.end(), value_type(0)) / m_rhs_norm_values.size();
+	return average_rhs_norm;
 }

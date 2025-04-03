@@ -27,10 +27,16 @@ __device__ __inline__ void eval_model_rhs(
     const index_type grid_size
 )
 {
-    auto iprev = (gid_j == 0) * gid + (gid_j > 0) * (gid - grid_resolution);
-    auto inext = (gid_j < grid_resolution - 1) * (gid + grid_resolution) + (gid_j == grid_resolution - 1) * gid;
-    auto jprev = (gid_i == 0) * gid + (gid_i > 0) * (gid - 1);
-    auto jnext = (gid_i == grid_resolution - 1) * gid + (gid_i < grid_resolution - 1) * (gid + 1);
+    // auto iprev = (gid_j == 0) * gid + (gid_j > 0) * (gid - grid_resolution);
+    // auto inext = (gid_j < grid_resolution - 1) * (gid + grid_resolution) + (gid_j == grid_resolution - 1) * gid;
+    // auto jprev = (gid_i == 0) * gid + (gid_i > 0) * (gid - 1);
+    // auto jnext = (gid_i == grid_resolution - 1) * gid + (gid_i < grid_resolution - 1) * (gid + 1);
+	
+	auto iprev = (gid_j == 0) * (gid + grid_size - grid_resolution) + (gid_j > 0) * (gid - grid_resolution);
+    auto inext = (gid_j < grid_resolution - 1) * (gid + grid_resolution) + (gid_j == grid_resolution - 1) * (gid - grid_size + grid_resolution);
+	
+    auto jprev = (gid_i == 0) * (gid + grid_resolution - 1) + (gid_i > 0) * (gid - 1);
+    auto jnext = (gid_i == grid_resolution - 1) * (gid - grid_resolution + 1) + (gid_i < grid_resolution - 1) * (gid + 1);
 
     u = y[gid];
     v = y[gid + grid_size];
@@ -48,7 +54,6 @@ __device__ __inline__ void eval_model_rhs(
 template <typename value_type, typename index_type>
 __global__ void r2_initial_stage(
     value_type* t_sys_state,
-    value_type* t_rhs_state,
     value_type* t_time_steps,
     const index_type* t_run_indices,
     const unsigned int grid_resolution, // grid resolution
@@ -69,7 +74,6 @@ __global__ void r2_initial_stage(
         auto degree = t_run_indices[3 * mid + 2];
 
         value_type* y = t_sys_state + 4 * sys_size * sid;
-        value_type* y_rhs = t_rhs_state + sys_size * sid;
         value_type* y_prev = y + sys_size;
         value_type* yjm1 = y_prev + sys_size;
         value_type* yjm2 = yjm1 + sys_size;
@@ -82,10 +86,15 @@ __global__ void r2_initial_stage(
         // yjm1 = yprev + dt * recf(mr) * f(y_prev)
         //eval_model_rhs(y_prev, yjm1, gid, grid_resolution, grid_size);
         //{
-            auto iprev = (gid < grid_resolution) * gid + (gid >= grid_resolution) * (gid - grid_resolution);
-            auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * gid;
-            auto jprev = (gid % grid_resolution == 0) * gid + (gid % grid_resolution > 0) * (gid - 1);
-            auto jnext = (gid % grid_resolution == grid_resolution - 1) * gid + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
+            // auto iprev = (gid < grid_resolution) * gid + (gid >= grid_resolution) * (gid - grid_resolution);
+            // auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * gid;
+            // auto jprev = (gid % grid_resolution == 0) * gid + (gid % grid_resolution > 0) * (gid - 1);
+            // auto jnext = (gid % grid_resolution == grid_resolution - 1) * gid + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
+			
+			auto iprev = (gid < grid_resolution) * (gid + grid_size - grid_resolution) + (gid >= grid_resolution) * (gid - grid_resolution);
+            auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * (gid - grid_size + grid_resolution);
+            auto jprev = (gid % grid_resolution == 0) * (gid + grid_resolution - 1) + (gid % grid_resolution > 0) * (gid - 1);
+            auto jnext = (gid % grid_resolution == grid_resolution - 1) * (gid - grid_resolution + 1) + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
 
             value_type u = y_prev[gid];
             value_type v = y_prev[gid + grid_size];
@@ -97,9 +106,6 @@ __global__ void r2_initial_stage(
                 (y_prev[iprev + grid_size] + y_prev[inext + grid_size] + y_prev[jprev + grid_size] + y_prev[jnext + grid_size] - 4 * v)
                 + g(u, v, dc_par);
         //}
-
-            y_rhs[gid] = rhs_u;
-            y_rhs[gid + grid_size] = rhs_v;
 
         value_type out_u = rhs_u * time_step * dc_recf[pos_recf] + u;
         value_type out_v = rhs_v * time_step * dc_recf[pos_recf] + v;
@@ -307,10 +313,14 @@ __global__ void spectral_radius_est_stage(
     auto gid = tid;
     while (gid < grid_size)
     {
-        auto iprev = (gid < grid_resolution) * gid + (gid >= grid_resolution) * (gid - grid_resolution);
-        auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * gid;
-        auto jprev = (gid % grid_resolution == 0) * gid + (gid % grid_resolution > 0) * (gid - 1);
-        auto jnext = (gid % grid_resolution == grid_resolution - 1) * gid + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
+        // auto iprev = (gid < grid_resolution) * gid + (gid >= grid_resolution) * (gid - grid_resolution);
+        // auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * gid;
+        // auto jprev = (gid % grid_resolution == 0) * gid + (gid % grid_resolution > 0) * (gid - 1);
+        // auto jnext = (gid % grid_resolution == grid_resolution - 1) * gid + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
+		auto iprev = (gid < grid_resolution) * (gid + grid_size - grid_resolution) + (gid >= grid_resolution) * (gid - grid_resolution);
+        auto inext = (gid + grid_resolution < grid_size) * (gid + grid_resolution) + (gid + grid_resolution >= grid_size) * (gid - grid_size + grid_resolution);
+        auto jprev = (gid % grid_resolution == 0) * (gid + grid_resolution - 1) + (gid % grid_resolution > 0) * (gid - 1);
+        auto jnext = (gid % grid_resolution == grid_resolution - 1) * (gid - grid_resolution + 1) + (gid % grid_resolution < grid_resolution - 1) * (gid + 1);
 
         unsigned int lin_coeff = 4 - (iprev == gid) - (inext == gid) - (jprev == gid) - (jnext == gid);
 

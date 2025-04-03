@@ -14,6 +14,10 @@
 #include "utils/CUDALogger.cuh"
 #include "utils/RunResult.cuh"
 
+#include "utils/reduce_utils.cuh"
+
+//#define LOG_TIME
+
 /* Model-independent device constants */
 
 # define constant_type double
@@ -30,7 +34,7 @@ __constant__ constant_type dc_fp2[46];
 
 __constant__ constant_type dc_recf[4476];
 
-__constant__ constant_type dc_par[10];
+__constant__ constant_type dc_par[50];
 
 __constant__ constant_type dc_atol;
 
@@ -141,7 +145,7 @@ __global__ void local_error_est_stage(
 
 	value_type time_step = t_time_steps[sid];
 
-	value_type temp2 = time_step * dc_fp2[pos_fp];
+	//value_type temp2 = time_step * dc_fp2[pos_fp];
 
 	/*
 	if (tid == 0 && blockIdx.x == 0)
@@ -202,13 +206,82 @@ __global__ void local_error_est_stage(
 }
 
 template <typename value_type, typename index_type>
-class R2GPUHandler : public R2Handler<value_type, index_type>
+__global__ void rhs_l2_norm_stage(
+	const value_type* t_rhs_state,
+	value_type* t_rhs_norm,
+	const index_type* t_run_indices,
+	const index_type t_sys_size,
+	const index_type t_sim_number // number of simulations
+)
+{
+	static __shared__ value_type shared_mem[32];
+
+	auto tid = threadIdx.x; // thread index (note that each thread processes TWO elements of the system)
+	auto mid = blockIdx.x; // index of model which is processed
+	value_type val = 0;
+
+	auto sid = t_run_indices[mid];
+
+	const value_type* y_rhs = t_rhs_state + t_sys_size * sid;
+
+	auto gid = tid;
+	while (gid < t_sys_size)
+	{
+		value_type val_u = y_rhs[gid];
+		val += (val_u * val_u);
+		gid += blockDim.x;
+	} // while
+
+	__syncthreads();
+
+	// reduction
+
+	// indexes for the current thread
+	const unsigned int lane = tid % warpSize;
+	const unsigned int wid = tid / warpSize;
+
+	// warp-level reduction
+	val = warp_reduce_sum(val);
+
+	// writing reduced values to shared memory
+	if (lane == 0)
+		shared_mem[wid] = val;
+
+	__syncthreads();
+
+	//read from shared memory only if that warp existed
+	val = (tid < blockDim.x / warpSize) ? shared_mem[lane] : 0;
+
+	if (wid == 0)
+		val = warp_reduce_sum(val); //Final reduce within first warp
+
+	if (tid == 0)
+	{
+		t_rhs_norm[mid] = sqrt(val) / t_sys_size;
+	}
+}
+
+template <typename value_type, typename index_type>
+class R2GPUHandler : public R2Handler<value_type, index_type, R2GPUScheduler<value_type, index_type>>
 {
 private:
 	cudaError_t init_constant_arrays();
+	cudaError_t m_cuda_status;
 
 protected:
 	index_type m_device_number;
+
+	unsigned int m_block_size_overwrite = 1024;
+	unsigned int m_block_size_update = 1024;
+	unsigned int m_block_size_local_error = 64;
+	unsigned int m_block_size_rhs_norm = 64;
+
+	index_type find_block_number(index_type t_total_size, index_type t_block_size);
+
+	virtual void execute_initial_stage(R2GPUScheduler<value_type, index_type>& scheduler, index_type queue_length, size_t run_indices_offset) = 0;
+	virtual void execute_rec_stage(R2GPUScheduler<value_type, index_type>& scheduler, index_type queue_length, size_t run_indices_offset) = 0;
+	virtual void execute_fp_stage(R2GPUScheduler<value_type, index_type>& scheduler, index_type queue_length, size_t run_indices_offset) = 0;
+	virtual void execute_spectral_radius_stage(R2GPUScheduler<value_type, index_type>& scheduler, index_type queue_length, size_t run_indices_offset) = 0;
 
 public:
 	R2GPUHandler(
@@ -220,7 +293,11 @@ public:
 		value_type t_rtol = 1e-3
 	);
 
-	virtual cudaError_t handle_computations(R2GPUScheduler<value_type, index_type>& scheduler) = 0;
+	void handle_computations(R2GPUScheduler<value_type, index_type>& scheduler) override;
+
+	cudaError_t get_cuda_status() { return this->m_cuda_status; }
+
+	std::vector<long long> m_times;
 };
 
 template<typename value_type, typename index_type>
@@ -266,9 +343,149 @@ R2GPUHandler<value_type, index_type>::R2GPUHandler(
 	value_type t_atol,
 	value_type t_rtol
 )
-	: R2Handler<value_type, index_type>(t_sim_number, t_sys_size, t_model_parameters, t_atol, t_rtol),
+	: R2Handler<value_type, index_type, R2GPUScheduler<value_type, index_type>>(t_sim_number, t_sys_size, t_model_parameters, t_atol, t_rtol),
 	m_device_number(t_device_number)
 {
 	CUDA_LOG(this->init_constant_arrays());
+	this->m_times.resize(7);
+}
+
+template<typename value_type, typename index_type>
+index_type R2GPUHandler<value_type, index_type>::find_block_number(index_type t_total_size, index_type t_block_size)
+{
+	return t_total_size / t_block_size
+		+ (t_total_size % t_block_size != 0);
+}
+
+template<typename value_type, typename index_type>
+void R2GPUHandler<value_type, index_type>::handle_computations(R2GPUScheduler<value_type, index_type>& scheduler)
+{
+	index_type queue_length = scheduler.get_queue_length(R2OperationType::PreviousStepOverwrite);
+	size_t run_indices_offset = scheduler.get_queue_start(R2OperationType::PreviousStepOverwrite);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[0], scheduler.get_cuda_stream());
+#endif
+
+		unsigned int block_number = find_block_number(
+			static_cast<unsigned int>(this->m_sys_size * queue_length),
+			this->m_block_size_overwrite
+		);
+
+		dim3 grid{ block_number, 1, 1 };
+		dim3 block{ this->m_block_size_overwrite, 1, 1 };
+		prev_state_overwrite_stage << <grid, block, 0, scheduler.get_cuda_stream() >> > (
+			scheduler.get_device_sys_state_ptr(),
+			scheduler.get_device_run_indices_ptr() + run_indices_offset,
+			this->m_sys_size,
+			queue_length);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	queue_length = scheduler.get_queue_length(R2OperationType::InitialStage);
+	run_indices_offset = scheduler.get_queue_start(R2OperationType::InitialStage);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[1], scheduler.get_cuda_stream());
+#endif
+		
+		unsigned int block_number = find_block_number(
+			static_cast<unsigned int>(queue_length), 
+			this->m_block_size_update
+		);
+
+		dim3 grid{ block_number, 1, 1 };
+		dim3 block{ this->m_block_size_update, 1, 1 };
+
+		update_time_step_data << <grid, block >> > (
+			scheduler.get_device_communication_data_ptr(),
+			scheduler.get_device_time_step_data_ptr(),
+			scheduler.get_device_run_indices_ptr() + run_indices_offset,
+			queue_length
+			);
+
+		this->execute_initial_stage(scheduler, queue_length, run_indices_offset);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	queue_length = scheduler.get_queue_length(R2OperationType::RecursiveStage);
+	run_indices_offset = scheduler.get_queue_start(R2OperationType::RecursiveStage);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[2], scheduler.get_cuda_stream());
+#endif
+
+		this->execute_rec_stage(scheduler, queue_length, run_indices_offset);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	queue_length = scheduler.get_queue_length(R2OperationType::FinishingProcedure);
+	run_indices_offset = scheduler.get_queue_start(R2OperationType::FinishingProcedure);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[4], scheduler.get_cuda_stream());
+#endif
+
+		this->execute_fp_stage(scheduler, queue_length, run_indices_offset);
+
+		dim3 grid{ queue_length, 1, 1 };
+		dim3 block{m_block_size_local_error, 1, 1 };
+		local_error_est_stage << <grid, block, 0, scheduler.get_cuda_stream() >> > (
+			scheduler.get_device_sys_state_ptr(),
+			scheduler.get_device_time_step_data_ptr(),
+			scheduler.get_device_local_error_data_ptr(),
+			scheduler.get_device_run_indices_ptr() + run_indices_offset,
+			this->m_sys_size,
+			queue_length // number of simulations
+			);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	queue_length = scheduler.get_queue_length(R2OperationType::SpectralRadiusEstimation);
+	run_indices_offset = scheduler.get_queue_start(R2OperationType::SpectralRadiusEstimation);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[5], scheduler.get_cuda_stream());
+#endif
+
+		this->execute_spectral_radius_stage(scheduler, queue_length, run_indices_offset);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	queue_length = scheduler.get_queue_length(R2OperationType::RhsNormEstimation);
+	run_indices_offset = scheduler.get_queue_start(R2OperationType::RhsNormEstimation);
+	if (queue_length > 0)
+	{
+#ifdef LOG_TIME
+		CUDALogger<std::chrono::nanoseconds> logger(&this->m_times[6], scheduler.get_cuda_stream());
+#endif
+
+		dim3 grid{ queue_length, 1, 1 };
+		dim3 block{ m_block_size_rhs_norm, 1, 1 };
+
+		rhs_l2_norm_stage << <grid, block, 0, scheduler.get_cuda_stream() >> > (
+			scheduler.get_device_rhs_state_ptr(),
+			scheduler.get_device_rhs_norm_data_ptr(),
+			scheduler.get_device_run_indices_ptr() + run_indices_offset,
+			this->m_sys_size,
+			queue_length // number of simulations
+			);
+
+		CUDA_LOG(cudaGetLastError());
+	}
+
+	CUDA_LOG(cudaStreamSynchronize(scheduler.get_cuda_stream()));
+
+	this->m_cuda_status = cudaGetLastError();
 }
 

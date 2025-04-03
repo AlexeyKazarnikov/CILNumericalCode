@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include "rock2/R2Runner.cuh"
+#include "rock2/R2Runner.h"
 #include "rock2/R2GPUScheduler.cuh"
 #include "rock2/rd/two_dim/RDGPUHandler2D.cuh"
 #include "rock2/rd/models/rd_rhs_gm.h"

@@ -54,7 +54,7 @@ R2OperationQueueManager<index_type>::R2OperationQueueManager(size_t t_reserved_s
 	this->clear();
 
 	m_start_indexes.resize(m_item_sizes.size());
-	for (int k = R2OperationType::PreviousStepOverwrite; k < R2OperationType::RhsNormEstimation; ++k)
+	for (int k = R2OperationType::PreviousStepOverwrite; k <= R2OperationType::RhsNormEstimation; ++k)
 	{
 		size_t operation_index = k;
 		size_t offset = 0;
@@ -146,6 +146,6 @@ size_t R2OperationQueueManager<index_type>::size()
 template<typename index_type>
 void R2OperationQueueManager<index_type>::clear()
 {
-	for (int k = R2OperationType::PreviousStepOverwrite; k < R2OperationType::RhsNormEstimation; ++k)
+	for (int k = R2OperationType::PreviousStepOverwrite; k <= R2OperationType::RhsNormEstimation; ++k)
 		m_operation_queue_data[static_cast<R2OperationType>(k)] = 0;
 }

@@ -87,7 +87,6 @@ void RDGPUHandler2D<value_type, index_type>::execute_initial_stage(R2GPUSchedule
 
 	r2_initial_stage<value_type, index_type> << <grid, block, 0, scheduler.get_cuda_stream() >> > (
 		scheduler.get_device_sys_state_ptr(),
-		scheduler.get_device_rhs_state_ptr(),
 		scheduler.get_device_time_step_data_ptr(),
 		scheduler.get_device_run_indices_ptr() + run_indices_offset,
 		this->m_grid_resolution, // grid resolution

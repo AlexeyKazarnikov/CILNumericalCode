@@ -502,7 +502,8 @@ cudaError_t DeviceArrayLink<T>::copy_to_host(T* t_data, std::size_t t_device_sta
 template<typename T>
 cudaError_t DeviceArrayLink<T>::copy_to_host(T* t_data, std::size_t t_size)
 {
-	return this->copy_to_host(HostArrayLink<T>{t_data, t_size}, 0, 0, t_size);
+	HostArrayLink<T> link{ t_data, t_size };
+	return this->copy_to_host(link, std::size_t(0), std::size_t(0), t_size);
 }
 
 template<typename T>
